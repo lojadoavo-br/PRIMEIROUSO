@@ -186,12 +186,9 @@ def disparar(contatos):
     print(f"{'='*50}")
     input("\nPressione ENTER para abrir o WhatsApp Web e começar...")
 
-    # Abre Chrome com perfil do usuário (já logado no WhatsApp Web)
+    # Abre Chrome em janela nova (sem conflito com Chrome já aberto)
     opts = Options()
     opts.add_argument("--start-maximized")
-    opts.add_argument(r"--user-data-dir=C:\Users\%USERNAME%\AppData\Local\Google\Chrome\User Data")
-    opts.add_argument("--profile-directory=Default")
-    # Evita detecção de automação
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option('useAutomationExtension', False)
 
@@ -200,9 +197,13 @@ def disparar(contatos):
         options=opts
     )
 
-    print("\nAguardando WhatsApp Web carregar (30s)...")
     driver.get("https://web.whatsapp.com")
-    time.sleep(30)
+    print("\n" + "="*50)
+    print("ESCANEIE O QR CODE do WhatsApp Web na janela que abriu.")
+    print("Depois volte aqui e pressione ENTER para começar o disparo.")
+    print("="*50)
+    input("\nPressione ENTER após escanear o QR Code...")
+    time.sleep(5)
 
     # Limita ao máximo de envios desta sessão
     pendentes = pendentes[:LIMITE_HOJE]
