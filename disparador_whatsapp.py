@@ -23,7 +23,7 @@ from datetime import datetime
 # ─────────────────────────────────────────
 INTERVALO_MIN = 25   # segundos mínimos entre mensagens
 INTERVALO_MAX = 45   # segundos máximos entre mensagens
-CAMINHO_PLANILHA = "3d87f332-PLANILHA_ULTIMOS_6_MESES.xlsx"
+CAMINHO_PLANILHA = "PLANILHA ULTIMOS 6 MESES.xlsx"
 LOG_ARQUIVO = "log_disparos.txt"
 
 # ─────────────────────────────────────────
