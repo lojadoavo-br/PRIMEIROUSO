@@ -25,6 +25,7 @@ INTERVALO_MIN = 25   # segundos mínimos entre mensagens
 INTERVALO_MAX = 45   # segundos máximos entre mensagens
 CAMINHO_PLANILHA = "PLANILHA ULTIMOS 6 MESES.xlsx"
 LOG_ARQUIVO = "log_disparos.txt"
+LIMITE_HOJE = 100    # máximo de mensagens por sessão
 
 # ─────────────────────────────────────────
 # EXTRAÇÃO E GERAÇÃO DAS MENSAGENS
@@ -202,6 +203,9 @@ def disparar(contatos):
     print("\nAguardando WhatsApp Web carregar (30s)...")
     driver.get("https://web.whatsapp.com")
     time.sleep(30)
+
+    # Limita ao máximo de envios desta sessão
+    pendentes = pendentes[:LIMITE_HOJE]
 
     erros = 0
     for i, contato in enumerate(pendentes, 1):
