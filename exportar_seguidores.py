@@ -49,17 +49,36 @@ def exportar():
     cl = Client()
     cl.delay_range = [2, 5]
 
+    from instagrapi.exceptions import TwoFactorRequired
+
+    def _login_com_2fa(cl, user, passwd):
+        try:
+            cl.login(user, passwd)
+        except TwoFactorRequired as e:
+            print("\n🔐 Verificação em duas etapas detectada.")
+            print("   Abra o app do Instagram ou SMS e pegue o código de 6 dígitos.\n")
+            codigo = input("   Digite o código aqui: ").strip()
+            two_factor_id = e.last_json.get("two_factor_info", {}).get("two_factor_identifier", "")
+            cl.two_factor_login(user, passwd, codigo, two_factor_id)
+
     sessao = Path("sessao_instagram.json")
     if sessao.exists():
         try:
             cl.load_settings(str(sessao))
             cl.login(user, passwd)
             print("✅ Sessão anterior reutilizada.")
+        except TwoFactorRequired as e:
+            print("\n🔐 Verificação em duas etapas detectada.")
+            print("   Abra o app do Instagram ou SMS e pegue o código de 6 dígitos.\n")
+            codigo = input("   Digite o código aqui: ").strip()
+            two_factor_id = e.last_json.get("two_factor_info", {}).get("two_factor_identifier", "")
+            cl.two_factor_login(user, passwd, codigo, two_factor_id)
+            cl.dump_settings(str(sessao))
         except Exception:
-            cl.login(user, passwd)
+            _login_com_2fa(cl, user, passwd)
             cl.dump_settings(str(sessao))
     else:
-        cl.login(user, passwd)
+        _login_com_2fa(cl, user, passwd)
         cl.dump_settings(str(sessao))
         print("✅ Login realizado.")
 
