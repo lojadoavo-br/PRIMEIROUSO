@@ -86,18 +86,36 @@ def criar_cliente():
     cl = Client()
     cl.delay_range = [2, 5]  # delay interno adicional do instagrapi
 
-    # Reutiliza sessão salva pra evitar logins repetidos (evita bloqueio)
+    from instagrapi.exceptions import TwoFactorRequired
+
+    def _login_com_2fa(cl, user, passwd):
+        try:
+            cl.login(user, passwd)
+        except TwoFactorRequired:
+            print("\n🔐 Verificação em duas etapas detectada.")
+            print("   Abra o app do Instagram ou SMS e pegue o código de 6 dígitos.\n")
+            codigo = input("   Digite o código aqui: ").strip()
+            two_factor_id = cl.last_json.get("two_factor_info", {}).get("two_factor_identifier", "")
+            cl.two_factor_login(user, passwd, codigo, two_factor_id)
+
     if Path(SESSAO_ARQUIVO).exists():
         try:
             cl.load_settings(SESSAO_ARQUIVO)
             cl.login(INSTAGRAM_USER, INSTAGRAM_PASS)
             print("✅ Sessão anterior carregada com sucesso.")
+        except TwoFactorRequired:
+            print("\n🔐 Verificação em duas etapas detectada.")
+            print("   Abra o app do Instagram ou SMS e pegue o código de 6 dígitos.\n")
+            codigo = input("   Digite o código aqui: ").strip()
+            two_factor_id = cl.last_json.get("two_factor_info", {}).get("two_factor_identifier", "")
+            cl.two_factor_login(INSTAGRAM_USER, INSTAGRAM_PASS, codigo, two_factor_id)
+            cl.dump_settings(SESSAO_ARQUIVO)
         except Exception:
             print("⚠️  Sessão expirada. Fazendo login novo...")
-            cl.login(INSTAGRAM_USER, INSTAGRAM_PASS)
+            _login_com_2fa(cl, INSTAGRAM_USER, INSTAGRAM_PASS)
             cl.dump_settings(SESSAO_ARQUIVO)
     else:
-        cl.login(INSTAGRAM_USER, INSTAGRAM_PASS)
+        _login_com_2fa(cl, INSTAGRAM_USER, INSTAGRAM_PASS)
         cl.dump_settings(SESSAO_ARQUIVO)
         print("✅ Login realizado. Sessão salva.")
 
