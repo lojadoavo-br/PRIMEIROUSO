@@ -159,7 +159,9 @@ def carregar_seguidores_de_arquivo(caminho: str) -> list:
 
 def disparar(cl, seguidores: list) -> None:
     enviados = carregar_enviados()
-    pendentes = [s for s in seguidores if s["user_id"] not in enviados]
+    # Inverte para começar pelos seguidores mais recentes
+    seguidores_recentes = list(reversed(seguidores))
+    pendentes = [s for s in seguidores_recentes if s["user_id"] not in enviados]
 
     total = len(pendentes)
     limite = min(total, LIMITE_POR_SESSAO)
