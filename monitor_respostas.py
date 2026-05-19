@@ -1,119 +1,118 @@
 """
 MONITOR DE RESPOSTAS — LOJA DO AVÔ
-Fica monitorando o WhatsApp Web e responde automaticamente
-quando clientes que receberam o pós-venda enviarem mensagem.
+Monitora o WhatsApp Web e responde automaticamente todos os chats não lidos.
 
 REQUISITOS:
   pip install selenium webdriver-manager
 
 COMO USAR:
-  1. Rode APÓS o disparador já ter enviado as mensagens
-  2. python monitor_respostas.py
-  3. Escaneie o QR Code
-  4. Deixe rodando em segundo plano — ele monitora e responde sozinho
-  5. Ctrl+C para parar
+  1. python monitor_respostas.py
+  2. Escaneie o QR Code
+  3. Deixe rodando — ele monitora e responde sozinho
+  4. Ctrl+C para parar
 """
 
 import time
 import random
 import re
 from datetime import datetime
-from urllib.parse import quote
+from selenium.webdriver.common.keys import Keys
 
-LOG_DISPAROS   = "log_disparos.txt"
 LOG_RESPOSTAS  = "log_respostas.txt"
-INTERVALO_SCAN = 20   # segundos entre cada varredura de novas mensagens
+INTERVALO_SCAN = 15  # segundos entre varreduras
 
 # ─────────────────────────────────────────
-# CLASSIFICAÇÃO DA MENSAGEM DO CLIENTE
+# CLASSIFICAÇÃO
 # ─────────────────────────────────────────
 
-POSITIVO    = ['obrigad', 'ótim', 'otim', 'excelent', 'perfeito', 'gostei',
-               'adorei', 'ajudou', 'funcionou', 'muito bom', 'maravilh',
-               'satisfeit', 'amei', 'curti', 'bom sim', 'sim ', 'tá ótimo',
-               'chegou', 'recebi', '👍', '😊', '❤', '🙏']
+POSITIVO = ['obrigad', 'ótim', 'otim', 'excelent', 'perfeito', 'gostei',
+            'adorei', 'ajudou', 'funcionou', 'muito bom', 'maravilh',
+            'satisfeit', 'amei', 'curti', 'chegou', 'recebi', 'legal',
+            'ficou bom', 'ficou ótim', 'tá bom', 'ta bom', '👍', '😊', '❤', '🙏']
 
-PERGUNTA    = ['como', 'onde', 'quando', 'qual', 'quanto', 'funciona',
-               'usar', 'instalar', 'colocar', 'montar', 'regulag',
-               'tamanho', 'medida', 'entrega', 'prazo', 'frete', '?']
+PERGUNTA = ['como', 'onde', 'quando', 'qual', 'quanto', 'funciona',
+            'usar', 'instalar', 'colocar', 'montar', 'regulag',
+            'tamanho', 'medida', 'entrega', 'prazo', 'frete', '?']
 
-PRECO       = ['caro', 'preço', 'preco', 'valor', 'desconto', 'barato',
-               'custo', 'parcela', 'parcel', 'boleto', 'pix', 'pagamento']
+PRECO    = ['caro', 'preço', 'preco', 'valor', 'desconto', 'barato',
+            'custo', 'parcela', 'parcel', 'boleto', 'pix', 'pagamento']
 
-PROBLEMA    = ['não funciona', 'nao funciona', 'defeito', 'quebrou',
-               'problema', 'errado', 'trocar', 'devolver', 'reclamaç',
-               'danificad', 'veio errado', 'não chegou', 'nao chegou',
-               'extraviado', 'sumiu', 'desmont']
+PROBLEMA = ['não funciona', 'nao funciona', 'defeito', 'quebrou',
+            'problema', 'errado', 'trocar', 'devolver', 'reclamaç',
+            'danificad', 'veio errado', 'não chegou', 'nao chegou',
+            'extraviado', 'sumiu']
 
-NAO_QUER    = ['não quero', 'nao quero', 'não preciso', 'nao preciso',
-               'por enquanto não', 'obrigado, não', 'obrigada, não',
-               'tô bem', 'to bem', 'nao obrigad', 'não obrigad']
+NAO_QUER = ['não quero', 'nao quero', 'não preciso', 'nao preciso',
+            'por enquanto não', 'tô bem', 'to bem', 'nao obrigad', 'não obrigad']
 
 def classificar(texto):
     t = texto.lower()
     for p in PROBLEMA:
-        if p in t:
-            return 'problema'
+        if p in t: return 'problema'
     for p in NAO_QUER:
-        if p in t:
-            return 'nao_quer'
+        if p in t: return 'nao_quer'
     for p in PRECO:
-        if p in t:
-            return 'preco'
+        if p in t: return 'preco'
     for p in PERGUNTA:
-        if p in t:
-            return 'pergunta'
+        if p in t: return 'pergunta'
     for p in POSITIVO:
-        if p in t:
-            return 'positivo'
+        if p in t: return 'positivo'
     return 'neutro'
 
 # ─────────────────────────────────────────
-# RESPOSTAS AUTOMÁTICAS POR CATEGORIA
+# RESPOSTAS
 # ─────────────────────────────────────────
 
-def resposta(categoria, primeiro_nome):
-    fn = primeiro_nome
+def resposta(categoria, nome_chat):
+    # Pega só o primeiro nome do contato
+    fn = nome_chat.strip().split()[0].capitalize() if nome_chat.strip() else 'olá'
+    # Se for número, usa forma genérica
+    if fn.startswith('+') or fn.isdigit():
+        fn = 'olá'
+        prefixo = 'Oi! '
+    else:
+        prefixo = f'Oi, {fn}! '
 
     if categoria == 'positivo':
         opcoes = [
-            f"Que ótimo, {fn}! Fico muito feliz em saber 😊\n\nSe puder nos mandar uma foto do produto em uso, ajuda muito outras famílias que também buscam mais segurança e autonomia no dia a dia.\n\nE se tiver um minutinho, uma avaliação no nosso site é uma forma incrível de ajudar outras pessoas. Qualquer coisa, pode contar com a gente!",
-            f"Que maravilha, {fn}! Isso nos motiva muito 😊\n\nSe quiser compartilhar uma foto usando o produto, ficamos muito felizes — ajuda outras famílias que estão buscando mais qualidade de vida.\n\nContinue contando com a Loja do Avô sempre que precisar!",
+            f"{prefixo}Fico muito feliz em saber 😊\n\nSe puder nos mandar uma foto do produto em uso, ajuda muito outras famílias que também buscam mais segurança e autonomia no dia a dia.\n\nE se tiver um minutinho, uma avaliação no nosso site é uma forma incrível de ajudar outras pessoas. Qualquer coisa, pode contar com a gente!",
+            f"{prefixo}Que maravilha! Isso nos motiva muito 😊\n\nSe quiser compartilhar uma foto usando o produto, ficamos muito felizes — ajuda outras famílias que estão buscando mais qualidade de vida.\n\nContinue contando com a Loja do Avô sempre que precisar!",
         ]
         return random.choice(opcoes)
 
     elif categoria == 'pergunta':
         opcoes = [
-            f"Claro, {fn}! Pode perguntar à vontade 😊\n\nNossa equipe especializada vai te ajudar da melhor forma. Qual é a sua dúvida?",
-            f"Oi, {fn}! Com prazer te ajudo 😊\n\nMe conta o que você precisa saber que a gente orienta com cuidado.",
+            f"{prefixo}Pode perguntar à vontade 😊\n\nNossa equipe especializada vai te ajudar da melhor forma. Qual é a sua dúvida?",
+            f"{prefixo}Com prazer te ajudo 😊\n\nMe conta o que você precisa saber que a gente orienta com cuidado.",
         ]
         return random.choice(opcoes)
 
     elif categoria == 'preco':
-        opcoes = [
-            f"Entendo, {fn}! A Loja do Avô trabalha com produtos de alta qualidade, com curadoria especializada por fisioterapeuta. Cada item foi testado e aprovado pensando em segurança, durabilidade e real benefício para quem usa.\n\nMais do que um produto, é um investimento em qualidade de vida 💙\n\nSe quiser, posso te passar mais detalhes sobre o item que te interessou.",
-            f"Compreendo, {fn}! Nossos produtos passam por uma seleção rigorosa — são itens que realmente funcionam e têm durabilidade.\n\nA gente preza por qualidade e segurança acima de tudo. Se precisar de mais informações, pode contar com a gente 😊",
-        ]
-        return random.choice(opcoes)
+        return (
+            f"{prefixo}Entendo! A Loja do Avô trabalha com produtos de alta qualidade, com curadoria especializada por fisioterapeuta. "
+            f"Cada item foi testado e aprovado pensando em segurança, durabilidade e real benefício para quem usa.\n\n"
+            f"Mais do que um produto, é um investimento em qualidade de vida 💙\n\n"
+            f"Se quiser, posso te passar mais detalhes sobre o item que te interessou."
+        )
 
     elif categoria == 'problema':
         return (
-            f"Oi, {fn}, sinto muito por isso! 😟\n\n"
+            f"{prefixo}Sinto muito por isso! 😟\n\n"
             f"Vou acionar nossa equipe de atendimento para te ajudar da melhor forma.\n\n"
             f"Pode nos passar mais detalhes do que aconteceu? Queremos resolver isso o mais rápido possível."
         )
 
     elif categoria == 'nao_quer':
         opcoes = [
-            f"Tudo bem, {fn}! Fico feliz que esteja bem 😊\n\nQualquer coisa que precisar no futuro, pode contar com a Loja do Avô. Estamos sempre aqui!",
-            f"Entendido, {fn}! Sem problema nenhum 😊\n\nA Loja do Avô estará aqui sempre que precisar. Cuide-se bem!",
+            f"{prefixo}Tudo bem! Fico feliz que esteja bem 😊\n\nQualquer coisa que precisar no futuro, pode contar com a Loja do Avô. Estamos sempre aqui!",
+            f"{prefixo}Sem problema nenhum 😊\n\nA Loja do Avô estará aqui sempre que precisar. Cuide-se bem!",
         ]
         return random.choice(opcoes)
 
-    else:  # neutro
+    else:
         opcoes = [
-            f"Oi, {fn}! Obrigado por responder 😊\n\nQualquer dúvida ou necessidade, pode contar com a gente aqui na Loja do Avô!",
-            f"Olá, {fn}! Que bom ter seu retorno 😊\n\nEstamos à disposição sempre que precisar. Cuide-se!",
+            f"{prefixo}Obrigado por responder 😊\n\nQualquer dúvida ou necessidade, pode contar com a gente aqui na Loja do Avô!",
+            f"{prefixo}Que bom ter seu retorno 😊\n\nEstamos à disposição sempre que precisar. Cuide-se!",
         ]
         return random.choice(opcoes)
 
@@ -121,44 +120,78 @@ def resposta(categoria, primeiro_nome):
 # LOG
 # ─────────────────────────────────────────
 
-def carregar_contatos_enviados():
-    """Retorna dict {telefone: nome} de quem recebeu o pós-venda."""
-    contatos = {}
-    try:
-        with open(LOG_DISPAROS, 'r', encoding='utf-8') as f:
-            for line in f:
-                if line.startswith('OK|'):
-                    parts = line.strip().split('|')
-                    if len(parts) >= 3:
-                        contatos[parts[1]] = parts[2]  # tel -> nome
-    except FileNotFoundError:
-        print("⚠️  log_disparos.txt não encontrado. Rode o disparador primeiro.")
-    return contatos
-
-def ja_respondido(telefone):
+def ja_respondido(chat_id):
     try:
         with open(LOG_RESPOSTAS, 'r', encoding='utf-8') as f:
             for line in f:
-                if f'|{telefone}|' in line:
+                if f'|{chat_id}|' in line:
                     return True
     except FileNotFoundError:
         pass
     return False
 
-def registrar_resposta(telefone, nome, categoria, msg_cliente):
+def registrar(chat_id, nome, categoria, msg):
     ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     with open(LOG_RESPOSTAS, 'a', encoding='utf-8') as f:
-        f.write(f"OK|{telefone}|{nome}|{categoria}|{ts}|{msg_cliente[:60]}\n")
-
-def primeiro_nome(nome):
-    parts = nome.strip().split()
-    fn = parts[0].capitalize() if parts else nome
-    if fn.lower() in ['free', 'teste', 'semear', 'lima']:
-        return nome.strip().title()
-    return fn
+        f.write(f"OK|{chat_id}|{nome}|{categoria}|{ts}|{msg[:60]}\n")
 
 # ─────────────────────────────────────────
-# MONITORAMENTO VIA SELENIUM
+# ENVIO DE MENSAGEM
+# ─────────────────────────────────────────
+
+def enviar_mensagem(driver, texto):
+    from selenium.webdriver.common.by import By
+
+    seletores_campo = [
+        '//div[@contenteditable="true"][@data-tab="10"]',
+        '//div[@contenteditable="true"][@title="Digite uma mensagem"]',
+        '//div[@data-testid="conversation-compose-box-input"]',
+        '//footer//div[@contenteditable="true"]',
+    ]
+
+    campo = None
+    for sel in seletores_campo:
+        try:
+            elementos = driver.find_elements(By.XPATH, sel)
+            if elementos:
+                campo = elementos[0]
+                break
+        except:
+            continue
+
+    if not campo:
+        raise Exception("Campo de texto não encontrado")
+
+    campo.click()
+    time.sleep(0.5)
+
+    linhas = texto.split('\n')
+    for i, linha in enumerate(linhas):
+        campo.send_keys(linha)
+        if i < len(linhas) - 1:
+            campo.send_keys(Keys.SHIFT + Keys.ENTER)
+
+    time.sleep(1)
+
+    seletores_botao = [
+        '//button[@data-testid="compose-btn-send"]',
+        '//button[@aria-label="Enviar"]',
+        '//span[@data-icon="send"]',
+    ]
+    for sel in seletores_botao:
+        try:
+            botoes = driver.find_elements(By.XPATH, sel)
+            if botoes:
+                botoes[0].click()
+                return True
+        except:
+            continue
+
+    campo.send_keys(Keys.ENTER)
+    return True
+
+# ─────────────────────────────────────────
+# MONITORAMENTO
 # ─────────────────────────────────────────
 
 def monitorar():
@@ -166,15 +199,11 @@ def monitorar():
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.common.by import By
-    from selenium.webdriver.support.ui import WebDriverWait
-    from selenium.webdriver.support import expected_conditions as EC
     from webdriver_manager.chrome import ChromeDriverManager
 
-    contatos = carregar_contatos_enviados()
     print(f"\n{'='*50}")
     print(f"MONITOR DE RESPOSTAS — LOJA DO AVÔ")
     print(f"{'='*50}")
-    print(f"Monitorando respostas de {len(contatos)} contatos")
     print(f"Varredura a cada {INTERVALO_SCAN} segundos")
     print(f"{'='*50}")
 
@@ -190,118 +219,119 @@ def monitorar():
 
     driver.get("https://web.whatsapp.com")
     print("\nEscaneie o QR Code na janela do Chrome.")
-    input("Pressione ENTER após escanear e o WhatsApp carregar...")
+    input("Pressione ENTER após escanear e o WhatsApp carregar completamente...")
     time.sleep(5)
 
-    print("\n✅ Monitoramento iniciado! Aguardando respostas dos clientes...")
+    print("\n✅ Monitoramento iniciado! Aguardando respostas...")
     print("   (Pressione Ctrl+C para parar)\n")
 
     respondidos_sessao = set()
 
     while True:
         try:
-            # Busca chats com mensagens não lidas
-            nao_lidos = driver.find_elements(
-                By.XPATH,
-                '//span[@data-testid="icon-unread-count" or contains(@aria-label,"não lida") or @data-icon="unread-count"]'
-            )
+            # Detecta chats com mensagens não lidas pelo badge verde
+            seletores_nao_lidos = [
+                '//span[contains(@aria-label,"mensagem não lida")]',
+                '//span[@data-testid="icon-unread-count"]',
+                '//span[contains(@class,"unread-count")]',
+            ]
 
-            if nao_lidos:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(nao_lidos)} chat(s) com mensagem não lida...")
+            chats_nao_lidos = []
+            for sel in seletores_nao_lidos:
+                encontrados = driver.find_elements(By.XPATH, sel)
+                if encontrados:
+                    chats_nao_lidos = encontrados
+                    break
 
-                # Clica no primeiro chat não lido
-                for badge in nao_lidos[:3]:
+            if chats_nao_lidos:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(chats_nao_lidos)} chat(s) não lido(s) — processando...")
+
+                for badge in chats_nao_lidos[:5]:
                     try:
-                        chat_item = badge.find_element(By.XPATH, './ancestor::div[@data-testid="cell-frame-container"]')
-                        chat_item.click()
+                        # Sobe na árvore DOM para achar o container do chat
+                        chat_container = None
+                        for xpath_anc in [
+                            './ancestor::div[@data-testid="cell-frame-container"]',
+                            './ancestor::li',
+                            './ancestor::div[@role="listitem"]',
+                        ]:
+                            try:
+                                chat_container = badge.find_element(By.XPATH, xpath_anc)
+                                break
+                            except:
+                                continue
+
+                        if not chat_container:
+                            continue
+
+                        chat_container.click()
                         time.sleep(2)
 
-                        # Pega o número do chat aberto via URL
-                        url_atual = driver.current_url
-                        tel_match = re.search(r'phone=(\d+)', url_atual)
+                        # Pega o nome/número do chat aberto
+                        nome_chat = ''
+                        for sel_header in [
+                            '//header//span[@dir="auto"][1]',
+                            '//header//*[@data-testid="conversation-info-header-chat-title"]',
+                            '//div[@data-testid="conversation-header"]//span[@dir="auto"]',
+                        ]:
+                            try:
+                                el = driver.find_element(By.XPATH, sel_header)
+                                nome_chat = el.text.strip()
+                                if nome_chat:
+                                    break
+                            except:
+                                continue
 
-                        # Tenta pegar o telefone pelo título do chat
-                        try:
-                            header = driver.find_element(By.XPATH, '//header//span[@dir="auto"]')
-                            nome_chat = header.text.strip()
-                        except:
-                            nome_chat = ''
+                        if not nome_chat:
+                            continue
+
+                        # Usa nome como ID único do chat
+                        chat_id = re.sub(r'\s+', '_', nome_chat.lower())
+
+                        if chat_id in respondidos_sessao or ja_respondido(chat_id):
+                            respondidos_sessao.add(chat_id)
+                            continue
 
                         # Lê a última mensagem recebida
-                        try:
-                            mensagens_recebidas = driver.find_elements(
-                                By.XPATH,
-                                '//div[contains(@class,"message-in")]//span[@dir="ltr"]'
-                            )
-                            if mensagens_recebidas:
-                                ultima_msg = mensagens_recebidas[-1].text.strip()
-                            else:
-                                ultima_msg = ''
-                        except:
-                            ultima_msg = ''
+                        ultima_msg = ''
+                        for sel_msg in [
+                            '//div[@data-testid="msg-container"][last()]//span[@dir="ltr"]',
+                            '//div[contains(@class,"message-in")][last()]//span[@dir="ltr"]',
+                            '//div[@data-id][last()]//span[@dir="ltr"]',
+                        ]:
+                            try:
+                                msgs = driver.find_elements(By.XPATH, sel_msg)
+                                if msgs:
+                                    ultima_msg = msgs[-1].text.strip()
+                                    if ultima_msg:
+                                        break
+                            except:
+                                continue
 
                         if not ultima_msg:
                             continue
 
-                        # Verifica se é um contato que recebeu o pós-venda
-                        nome_encontrado = None
-                        tel_encontrado = None
-
-                        for tel, nome in contatos.items():
-                            # Compara pelo nome do chat (WhatsApp mostra o nome salvo)
-                            nome_norm = nome.strip().lower()
-                            chat_norm = nome_chat.lower()
-                            if (nome_norm[:8] in chat_norm or chat_norm[:8] in nome_norm):
-                                nome_encontrado = nome
-                                tel_encontrado = tel
-                                break
-
-                        if not nome_encontrado or tel_encontrado in respondidos_sessao:
-                            continue
-
-                        if ja_respondido(tel_encontrado):
-                            respondidos_sessao.add(tel_encontrado)
-                            continue
-
                         # Classifica e responde
                         categoria = classificar(ultima_msg)
-                        fn = primeiro_nome(nome_encontrado)
-                        msg_resposta = resposta(categoria, fn)
+                        msg_resp  = resposta(categoria, nome_chat)
 
-                        print(f"\n💬 {nome_encontrado}")
-                        print(f"   Cliente disse: \"{ultima_msg[:60]}\"")
-                        print(f"   Categoria: {categoria}")
-                        print(f"   Respondendo...")
+                        print(f"\n  💬 {nome_chat}")
+                        print(f"     Disse: \"{ultima_msg[:70]}\"")
+                        print(f"     Categoria: {categoria}")
 
-                        # Digita e envia a resposta
-                        try:
-                            campo = driver.find_element(
-                                By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]'
-                            )
-                            # Digita linha por linha
-                            for linha in msg_resposta.split('\n'):
-                                campo.send_keys(linha)
-                                if linha != msg_resposta.split('\n')[-1]:
-                                    from selenium.webdriver.common.keys import Keys
-                                    campo.send_keys(Keys.SHIFT + Keys.ENTER)
+                        enviar_mensagem(driver, msg_resp)
+                        time.sleep(2)
 
-                            time.sleep(1)
-                            botao = driver.find_element(By.XPATH, '//button[@aria-label="Enviar"]')
-                            botao.click()
-                            time.sleep(2)
-
-                            print(f"   ✅ Resposta enviada ({categoria})")
-                            registrar_resposta(tel_encontrado, nome_encontrado, categoria, ultima_msg)
-                            respondidos_sessao.add(tel_encontrado)
-
-                        except Exception as e:
-                            print(f"   ❌ Erro ao enviar resposta: {e}")
+                        print(f"     ✅ Respondido!")
+                        registrar(chat_id, nome_chat, categoria, ultima_msg)
+                        respondidos_sessao.add(chat_id)
 
                     except Exception as e:
+                        print(f"     ⚠️  Erro neste chat: {e}")
                         continue
 
             else:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] Nenhuma resposta nova. Aguardando...", end='\r')
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Aguardando respostas...", end='\r')
 
         except Exception as e:
             print(f"\n⚠️  Erro na varredura: {e}")
