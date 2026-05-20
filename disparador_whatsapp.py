@@ -140,15 +140,22 @@ def carregar_contatos(planilha):
 # CARREGA PROGRESSO ANTERIOR (se tiver)
 # ─────────────────────────────────────────
 
+def normalizar_tel(tel):
+    """Remove tudo que não é número para comparação segura."""
+    import re
+    return re.sub(r'\D', '', str(tel))
+
 def carregar_enviados():
     enviados = set()
     try:
         with open(LOG_ARQUIVO, 'r', encoding='utf-8') as f:
             for line in f:
-                if line.startswith('OK|'):
+                if line.startswith('OK|') or line.startswith('INVALIDO|'):
                     parts = line.strip().split('|')
                     if len(parts) >= 2:
+                        # Salva tanto o número original quanto normalizado
                         enviados.add(parts[1])
+                        enviados.add(normalizar_tel(parts[1]))
     except FileNotFoundError:
         pass
     return enviados
@@ -173,17 +180,33 @@ def disparar(contatos):
     from webdriver_manager.chrome import ChromeDriverManager
 
     enviados = carregar_enviados()
-    pendentes = [c for c in contatos if c['telefone'] not in enviados]
+    # Filtra pendentes verificando número normalizado também
+    pendentes = [
+        c for c in contatos
+        if c['telefone'] not in enviados
+        and normalizar_tel(c['telefone']) not in enviados
+    ]
 
     print(f"\n{'='*50}")
     print(f"DISPARADOR DE PÓS-VENDA — LOJA DO AVÔ")
     print(f"{'='*50}")
-    print(f"Total de contatos: {len(contatos)}")
-    print(f"Já enviados anteriormente: {len(enviados)}")
+    print(f"Total de contatos na planilha: {len(contatos)}")
+    print(f"Já enviados (não serão repetidos): {len(contatos) - len(pendentes)}")
     print(f"Pendentes para enviar agora: {len(pendentes)}")
+    print(f"Limite desta sessão: {LIMITE_HOJE}")
+    print(f"Serão enviados hoje: {min(len(pendentes), LIMITE_HOJE)}")
     print(f"Intervalo entre mensagens: {INTERVALO_MIN}–{INTERVALO_MAX} segundos")
-    print(f"Tempo estimado: ~{round(len(pendentes) * (INTERVALO_MIN + INTERVALO_MAX) / 2 / 60)} minutos")
+    print(f"Tempo estimado: ~{round(min(len(pendentes), LIMITE_HOJE) * (INTERVALO_MIN + INTERVALO_MAX) / 2 / 60)} minutos")
     print(f"{'='*50}")
+
+    if len(pendentes) == 0:
+        print("\n✅ Todos os contatos já receberam a mensagem! Nada a enviar.")
+        return
+
+    print(f"\nPrimeiros 5 contatos desta sessão:")
+    for c in pendentes[:5]:
+        print(f"  - {c['nome']} | {c['telefone']}")
+
     input("\nPressione ENTER para abrir o WhatsApp Web e começar...")
 
     # Abre Chrome em janela nova (sem conflito com Chrome já aberto)
