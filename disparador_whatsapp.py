@@ -26,6 +26,7 @@ INTERVALO_MAX = 45   # segundos máximos entre mensagens
 CAMINHO_PLANILHA = "PLANILHA ULTIMOS 6 MESES.xlsx"
 LOG_ARQUIVO = "log_disparos.txt"
 LIMITE_HOJE = 100    # máximo de mensagens por sessão
+COMECAR_DE = "5516996265649"  # começar a partir deste número (SEMEAR)
 
 # ─────────────────────────────────────────
 # EXTRAÇÃO E GERAÇÃO DAS MENSAGENS
@@ -186,6 +187,20 @@ def disparar(contatos):
         if c['telefone'] not in enviados
         and normalizar_tel(c['telefone']) not in enviados
     ]
+
+    # Se COMECAR_DE definido, pula todos que vierem antes desse número
+    if COMECAR_DE:
+        idx = next(
+            (i for i, c in enumerate(pendentes)
+             if normalizar_tel(c['telefone']) == normalizar_tel(COMECAR_DE)),
+            None
+        )
+        if idx is not None:
+            pulados = idx
+            pendentes = pendentes[idx:]
+            print(f"  ▶ Iniciando a partir de: {pendentes[0]['nome']} (pulando {pulados} anteriores)")
+        else:
+            print(f"  ⚠️  COMECAR_DE não encontrado nos pendentes — começando do início")
 
     print(f"\n{'='*50}")
     print(f"DISPARADOR DE PÓS-VENDA — LOJA DO AVÔ")
