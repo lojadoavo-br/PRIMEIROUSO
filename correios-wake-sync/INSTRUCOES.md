@@ -1,18 +1,33 @@
 # correios-wake-sync
 
-Automação que consulta pedidos na Wake Commerce, verifica o rastreamento nos
-Correios via API oficial e atualiza automaticamente o status para **Entregue**
-quando a entrega é confirmada.
+Automação que lê pedidos do **Bling** (onde as etiquetas são geradas),
+verifica o rastreamento nos **Correios** via API oficial e atualiza o
+status para **Entregue** no **Bling** e na **Wake Commerce**.
+
+---
+
+## Como funciona
+
+```
+Bling (fonte)
+    └─ pedidos com rastreio dos Correios
+           └─ API Rastro (Correios)
+                  └─ evento "Objeto entregue ao destinatário"
+                         ├─ Atualiza status → Bling
+                         └─ Atualiza status → Wake (por nº de pedido)
+```
+
+O rastreio fica no Bling. A Wake é atualizada buscando o pedido pelo
+número, sem precisar ter o rastreio salvo lá.
 
 ---
 
 ## Requisitos
 
-- Node.js 18 ou superior
-- Contrato com os Correios habilitado para a API Rastro
-  (solicite em correios.com.br → Acesso para Empresas)
-- Token de API da Wake Commerce
-  (Painel Wake → Configurações → Integrações → API)
+- Node.js 18+
+- App Bling criado em developer.bling.com.br com permissão de leitura/escrita em pedidos
+- Token da Wake Commerce (Painel Wake → Configurações → Integrações → API)
+- Contrato Correios com API Rastro habilitada
 
 ---
 
@@ -22,45 +37,52 @@ quando a entrega é confirmada.
 cd correios-wake-sync
 npm install
 cp .env.example .env
-# edite o .env com suas credenciais
 ```
 
 ---
 
-## Configuração
+## Configuração do .env
 
-Edite o arquivo `.env`. Os campos obrigatórios são:
+### 1. Bling — obter as credenciais OAuth2
 
-| Variável                  | Onde obter                                      |
-|---------------------------|-------------------------------------------------|
-| `WAKE_API_URL`            | Painel Wake → Integrações → API                 |
-| `WAKE_ACCESS_TOKEN`       | Painel Wake → Integrações → API                 |
-| `CORREIOS_USUARIO`        | Contrato Correios (geralmente o CNPJ)           |
-| `CORREIOS_SENHA`          | Senha do contrato Correios                      |
-| `CORREIOS_CARTAO_POSTAGEM`| Número do cartão de postagem do contrato        |
+1. Acesse **developer.bling.com.br** e crie um novo app
+2. Anote o **Client ID** e o **Client Secret**
+3. Faça a autorização inicial (fluxo OAuth2 com o botão "Autorizar"):
+   - A URL de autorização é:
+     ```
+     https://api.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=SEU_CLIENT_ID&state=state123
+     ```
+   - Após autorizar, você recebe um `code` na URL de retorno
+4. Troque o `code` pelo `refresh_token`:
+   ```bash
+   curl -s -X POST https://api.bling.com.br/Api/v3/oauth/token \
+     -H "Authorization: Basic $(echo -n 'CLIENT_ID:CLIENT_SECRET' | base64)" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=authorization_code&code=SEU_CODE"
+   ```
+5. Salve o `refresh_token` retornado no `.env`
 
-### Status da Wake
+### 2. Bling — IDs de situação
 
-Confirme no painel da Wake os nomes exatos dos status da sua loja:
+Verifique os IDs de situação da sua loja:
+- Bling → Configurações → Situações de Pedido
+- Preencha `BLING_SITUACOES_VERIFICAR` com os IDs que significam "em rota"
+- Preencha `BLING_SITUACAO_ENTREGUE_ID` com o ID da situação "Entregue"
 
-- `WAKE_STATUS_VERIFICAR` — pedidos que entrarão na verificação  
-  *Padrão:* `Enviado,Em transporte,Objeto postado`
-- `WAKE_STATUS_ENTREGUE` — status aplicado quando entregue  
-  *Padrão:* `Entregue`
+### 3. Correios
 
-Se a Wake da sua loja usar IDs numéricos em vez de nomes, use:
-```
-WAKE_STATUS_ID_VERIFICAR=3,4,5
-WAKE_STATUS_ID_ENTREGUE=6
-```
+Solicite acesso à API Rastro em **correios.com.br → Acesso para Empresas**.
+Você receberá usuário, senha e número do cartão de postagem.
+
+### 4. Wake
+
+O token está em **Painel Wake → Configurações → Integrações → API**.
 
 ---
 
 ## Uso
 
-### Modo simulação (recomendado primeiro)
-
-Lista o que seria feito **sem alterar nada na Wake**:
+### Modo simulação (comece sempre aqui)
 
 ```bash
 npm run simular
@@ -68,9 +90,9 @@ npm run simular
 node index.js --dry-run
 ```
 
-### Modo produção
+Lista os pedidos que **seriam** atualizados. Nada é alterado.
 
-Atualiza os pedidos entregues na Wake:
+### Modo produção
 
 ```bash
 npm run producao
@@ -86,34 +108,32 @@ node index.js --help
 
 ---
 
-## Saída
+## Saída e logs
 
-Ao final de cada execução, dois arquivos são gerados em `logs/`:
+Dois arquivos são gerados em `logs/` a cada execução:
 
-- `execucao_YYYY-MM-DD_HH-mm-ss.log` — log completo linha a linha
-- `relatorio_YYYY-MM-DD_HH-mm-ss.json` — relatório estruturado (útil para n8n)
+- `execucao_YYYY-MM-DD_HH-mm-ss.log` — log linha a linha
+- `relatorio_YYYY-MM-DD_HH-mm-ss.json` — resultado estruturado (útil para n8n)
 
-Relatório exibido no terminal:
+Exemplo de relatório no terminal:
 
 ```
-══════════════════════════════════════════════
-RELATÓRIO FINAL — MODO SIMULAÇÃO
-Total de pedidos analisados:  45
-Sem código de rastreio:        3
-Rastreio não é Correios:       2
-Em trânsito (não entregues):  28
-Confirmados como entregues:   12
-[SIMULAÇÃO] Seriam atualizados: 12
-══════════════════════════════════════════════
+════════════════════════════════════════════════════════════
+RELATÓRIO FINAL — MODO PRODUÇÃO
+Total de pedidos analisados:        48
+Sem código de rastreio:              3
+Em trânsito (não entregues):        30
+Confirmados como entregues:         15
+Atualizados no Bling:               15
+Atualizados na Wake:                15
+════════════════════════════════════════════════════════════
 ```
 
 ---
 
-## Agendamento
+## Agendamento (cron)
 
-### Cron (Linux/Mac)
-
-Para rodar todo dia às 8h e às 18h:
+Para rodar duas vezes por dia (8h e 18h):
 
 ```bash
 crontab -e
@@ -123,44 +143,30 @@ crontab -e
 0 8,18 * * * cd /caminho/para/correios-wake-sync && node index.js --producao >> /tmp/correios-wake.out 2>&1
 ```
 
-### n8n
+---
 
-No n8n, use um nó **Execute Command** com:
+## Uso com n8n
+
+No n8n, crie um nó **Schedule Trigger** e conecte a um nó **Execute Command**:
 
 ```bash
 cd /caminho/para/correios-wake-sync && node index.js --producao
 ```
 
-Ou use um nó **Function** que leia o `relatorio_*.json` gerado para
-criar dashboards ou enviar notificações.
+Para processar o resultado, leia o último arquivo `relatorio_*.json` com
+um nó **Read/Write File** e use os dados para criar notificações ou dashboards.
 
 ---
 
-## Regras de segurança aplicadas
+## Regras de segurança
 
-- Nunca atualiza pedido sem código de rastreio válido
-- Apenas rastreios no formato Correios (`AA123456789BR`) são processados
-- Apenas o evento `BDE`/`BDI` (entregue ao destinatário) aciona a atualização
-- Pedidos cancelados, devolvidos, em troca ou com contestação são ignorados
-- Credenciais nunca aparecem em logs
-- Em caso de falha na API dos Correios, o pedido é ignorado nessa execução
-- Em caso de falha na Wake, o erro é registrado e os demais pedidos continuam
-
----
-
-## Ajuste do schema GraphQL da Wake
-
-Caso a Wake retorne erro de campo não encontrado, abra `src/wakeApi.js`
-e ajuste os nomes dos campos nas queries `QUERY_PEDIDOS`,
-`MUTATION_ATUALIZAR_STATUS` e `MUTATION_ADICIONAR_NOTA` para os nomes
-corretos do schema da sua versão da Wake.
-
-Para inspecionar o schema disponível na sua loja:
-
-```bash
-# Introspection query (execute com seu token)
-curl -s -X POST https://api.wake.tech/graphql \
-  -H "access-token: SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"query":"{ __schema { queryType { fields { name } } } }"}' | jq
-```
+| Regra | Comportamento |
+|---|---|
+| Sem rastreio | Ignora |
+| Rastreio não é formato Correios | Ignora |
+| Transportadora não é Correios | Ignora |
+| Pedido cancelado / devolvido / em troca | Ignora |
+| Correios retorna "em trânsito" | Nenhuma ação |
+| Correios retorna erro | Ignora nessa execução |
+| Wake retorna erro | Registra no log, continua os demais |
+| Credenciais | Nunca aparecem em logs |

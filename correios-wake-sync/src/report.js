@@ -5,9 +5,9 @@ const path   = require('path');
 const logger = require('./logger');
 
 function gerarRelatorio(stats, isDryRun, inicio) {
-  const fim      = new Date();
-  const duracao  = ((fim - inicio) / 1000).toFixed(1);
-  const modo     = isDryRun ? 'SIMULAÇÃO' : 'PRODUÇÃO';
+  const fim     = new Date();
+  const duracao = ((fim - inicio) / 1000).toFixed(1);
+  const modo    = isDryRun ? 'SIMULAÇÃO' : 'PRODUÇÃO';
 
   const linhas = [
     '═'.repeat(60),
@@ -16,29 +16,35 @@ function gerarRelatorio(stats, isDryRun, inicio) {
     `Duração:   ${duracao}s`,
     '─'.repeat(60),
     'RESUMO GERAL:',
-    `  Total de pedidos analisados:  ${stats.totalAnalisados}`,
-    `  Sem código de rastreio:       ${stats.semRastreio}`,
-    `  Rastreio não é Correios:      ${stats.semCorreios}`,
-    `  Status bloqueado:             ${stats.statusBloqueado}`,
-    `  Erro na API dos Correios:     ${stats.correiosErro}`,
-    `  Em trânsito (não entregues):  ${stats.emTransito}`,
-    `  Confirmados como entregues:   ${stats.entregues}`,
-    isDryRun
-      ? `  [SIMULAÇÃO] Seriam atualizados: ${stats.ignoradosDryRun}`
-      : `  Atualizados na Wake:           ${stats.atualizados}`,
-    isDryRun
-      ? ''
-      : `  Erros ao atualizar na Wake:    ${stats.errosWake}`,
-  ].filter(l => l !== null);
+    `  Total de pedidos analisados:      ${stats.totalAnalisados}`,
+    `  Sem código de rastreio:           ${stats.semRastreio}`,
+    `  Rastreio/transportadora ≠ Correios: ${stats.naoCorreios}`,
+    `  Situação bloqueada:               ${stats.statusBloqueado}`,
+    `  Erro na API dos Correios:         ${stats.correiosErro}`,
+    `  Em trânsito (não entregues):      ${stats.emTransito}`,
+    `  Confirmados como entregues:       ${stats.entregues}`,
+  ];
+
+  if (isDryRun) {
+    linhas.push(`  [SIMULAÇÃO] Seriam atualizados:   ${stats.ignoradosDryRun}`);
+  } else {
+    linhas.push(`  Atualizados no Bling:             ${stats.atualizadosBling}`);
+    linhas.push(`  Atualizados na Wake:              ${stats.atualizadosWake}`);
+    linhas.push(`  Erros Bling:                      ${stats.errosBling}`);
+    linhas.push(`  Erros Wake:                       ${stats.errosWake}`);
+  }
 
   if (stats.pedidosAtualizados.length > 0) {
     linhas.push('─'.repeat(60));
     linhas.push(isDryRun ? 'PEDIDOS QUE SERIAM ATUALIZADOS:' : 'PEDIDOS ATUALIZADOS:');
     for (const p of stats.pedidosAtualizados) {
       linhas.push(`  Pedido #${p.pedido} | Rastreio: ${p.rastreio}`);
-      linhas.push(`    Status Wake anterior: ${p.statusWake}`);
-      linhas.push(`    Evento Correios:      ${p.statusCorreios}`);
-      linhas.push(`    Data de entrega:      ${p.dataEntrega ?? 'não informada'}`);
+      linhas.push(`    Situação Bling:   ${p.situacaoBling}`);
+      linhas.push(`    Evento Correios:  ${p.statusCorreios}`);
+      linhas.push(`    Data entrega:     ${p.dataEntrega ?? 'não informada'}`);
+      if (!isDryRun) {
+        linhas.push(`    Bling atualizado: ${p.blingAtualizado ? 'Sim' : 'Não'} | Wake atualizada: ${p.wakeAtualizado ? 'Sim' : 'Não'}`);
+      }
     }
   }
 
@@ -46,56 +52,53 @@ function gerarRelatorio(stats, isDryRun, inicio) {
     linhas.push('─'.repeat(60));
     linhas.push('PEDIDOS IGNORADOS:');
     for (const p of stats.pedidosIgnorados) {
-      const motivo = p.ultimoEvento
-        ? `${p.motivo} — ${p.ultimoEvento}`
-        : p.motivo;
-      linhas.push(`  Pedido #${p.numero} | Rastreio: ${p.rastreio ?? 'ausente'} | Motivo: ${motivo}`);
+      const detalhe = p.ultimoEvento ? ` — ${p.ultimoEvento}` : '';
+      linhas.push(`  Pedido #${p.numero} | Rastreio: ${p.rastreio ?? 'ausente'} | ${p.motivo}${detalhe}`);
     }
   }
 
   if (stats.erros.length > 0) {
     linhas.push('─'.repeat(60));
-    linhas.push('ERROS ENCONTRADOS:');
+    linhas.push('ERROS:');
     for (const e of stats.erros) {
-      linhas.push(`  Pedido #${e.pedido} | Rastreio: ${e.rastreio} | ${e.erro}`);
+      linhas.push(`  Pedido #${e.pedido} | ${e.erro}`);
     }
   }
 
   linhas.push('═'.repeat(60));
 
-  const texto = linhas.join('\n');
-  logger.info('\n' + texto);
+  logger.info('\n' + linhas.join('\n'));
 
-  // Salvar relatório JSON para integração com outros sistemas
+  // Salvar JSON para integração (n8n, dashboards, etc.)
   const logsDir = path.join(__dirname, '..', 'logs');
   const ts = fim.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
   const arquivoJson = path.join(logsDir, `relatorio_${ts}.json`);
 
-  const relatorioJson = {
-    modo,
-    inicio:  inicio.toISOString(),
-    fim:     fim.toISOString(),
+  const json = {
+    modo, inicio: inicio.toISOString(), fim: fim.toISOString(),
     duracaoSegundos: parseFloat(duracao),
     resumo: {
-      totalAnalisados:   stats.totalAnalisados,
-      semRastreio:       stats.semRastreio,
-      semCorreios:       stats.semCorreios,
-      statusBloqueado:   stats.statusBloqueado,
-      correiosErro:      stats.correiosErro,
-      emTransito:        stats.emTransito,
-      entregues:         stats.entregues,
-      atualizados:       isDryRun ? stats.ignoradosDryRun : stats.atualizados,
-      errosWake:         stats.errosWake,
+      totalAnalisados:    stats.totalAnalisados,
+      semRastreio:        stats.semRastreio,
+      naoCorreios:        stats.naoCorreios,
+      statusBloqueado:    stats.statusBloqueado,
+      correiosErro:       stats.correiosErro,
+      emTransito:         stats.emTransito,
+      entregues:          stats.entregues,
+      atualizadosBling:   isDryRun ? stats.ignoradosDryRun : stats.atualizadosBling,
+      atualizadosWake:    isDryRun ? stats.ignoradosDryRun : stats.atualizadosWake,
+      errosBling:         stats.errosBling,
+      errosWake:          stats.errosWake,
     },
     pedidosAtualizados: stats.pedidosAtualizados,
     pedidosIgnorados:   stats.pedidosIgnorados,
     erros:              stats.erros,
   };
 
-  fs.writeFileSync(arquivoJson, JSON.stringify(relatorioJson, null, 2), 'utf-8');
-  logger.info(`Relatório JSON salvo em: ${arquivoJson}`);
+  fs.writeFileSync(arquivoJson, JSON.stringify(json, null, 2), 'utf-8');
+  logger.info(`Relatório JSON salvo: ${arquivoJson}`);
 
-  return relatorioJson;
+  return json;
 }
 
 module.exports = { gerarRelatorio };
