@@ -181,26 +181,37 @@ def disparar(contatos):
     from webdriver_manager.chrome import ChromeDriverManager
 
     enviados = carregar_enviados()
-    # Filtra pendentes verificando número normalizado também
-    pendentes = [
-        c for c in contatos
-        if c['telefone'] not in enviados
-        and normalizar_tel(c['telefone']) not in enviados
-    ]
 
-    # Se COMECAR_DE definido, pula todos que vierem antes desse número
+    # Se COMECAR_DE definido, descobre a posição dele na lista COMPLETA
+    # e filtra apenas os pendentes que aparecem a partir dessa posição
     if COMECAR_DE:
-        idx = next(
-            (i for i, c in enumerate(pendentes)
+        idx_full = next(
+            (i for i, c in enumerate(contatos)
              if normalizar_tel(c['telefone']) == normalizar_tel(COMECAR_DE)),
             None
         )
-        if idx is not None:
-            pulados = idx
-            pendentes = pendentes[idx:]
-            print(f"  ▶ Iniciando a partir de: {pendentes[0]['nome']} (pulando {pulados} anteriores)")
+        if idx_full is not None:
+            # Pega só contatos a partir dessa posição na lista completa
+            contatos_a_partir = contatos[idx_full:]
+            pendentes = [
+                c for c in contatos_a_partir
+                if c['telefone'] not in enviados
+                and normalizar_tel(c['telefone']) not in enviados
+            ]
+            print(f"  ▶ Iniciando a partir de: {contatos[idx_full]['nome']}")
         else:
-            print(f"  ⚠️  COMECAR_DE não encontrado nos pendentes — começando do início")
+            print(f"  ⚠️  COMECAR_DE não encontrado — começando do início")
+            pendentes = [
+                c for c in contatos
+                if c['telefone'] not in enviados
+                and normalizar_tel(c['telefone']) not in enviados
+            ]
+    else:
+        pendentes = [
+            c for c in contatos
+            if c['telefone'] not in enviados
+            and normalizar_tel(c['telefone']) not in enviados
+        ]
 
     print(f"\n{'='*50}")
     print(f"DISPARADOR DE PÓS-VENDA — LOJA DO AVÔ")
