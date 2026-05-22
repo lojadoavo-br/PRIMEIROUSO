@@ -151,7 +151,7 @@ def carregar_enviados():
     try:
         with open(LOG_ARQUIVO, 'r', encoding='utf-8') as f:
             for line in f:
-                if line.startswith('OK|') or line.startswith('INVALIDO|'):
+                if line.startswith('OK|'):
                     parts = line.strip().split('|')
                     if len(parts) >= 2:
                         # Salva tanto o número original quanto normalizado
@@ -224,27 +224,27 @@ def disparar(contatos):
 
     input("\nPressione ENTER para abrir o WhatsApp Web e começar...")
 
-    # Abre Chrome em janela nova (sem conflito com Chrome já aberto)
-    opts = Options()
-    opts.add_argument("--start-maximized")
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option('useAutomationExtension', False)
+    # Limita ao máximo de envios desta sessão
+    pendentes = pendentes[:LIMITE_HOJE]
 
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=opts
-    )
+    def iniciar_driver():
+        opts = Options()
+        opts.add_argument("--start-maximized")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--no-sandbox")
+        opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+        opts.add_experimental_option('useAutomationExtension', False)
+        d = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=opts)
+        d.get("https://web.whatsapp.com")
+        return d
 
-    driver.get("https://web.whatsapp.com")
+    driver = iniciar_driver()
     print("\n" + "="*50)
     print("ESCANEIE O QR CODE do WhatsApp Web na janela que abriu.")
     print("Depois volte aqui e pressione ENTER para começar o disparo.")
     print("="*50)
     input("\nPressione ENTER após escanear o QR Code...")
     time.sleep(5)
-
-    # Limita ao máximo de envios desta sessão
-    pendentes = pendentes[:LIMITE_HOJE]
 
     erros = 0
     for i, contato in enumerate(pendentes, 1):
@@ -254,43 +254,81 @@ def disparar(contatos):
 
         print(f"\n[{i}/{len(pendentes)}] {nome} | {tel}")
 
-        try:
-            # Abre chat diretamente pela URL
-            url = f"https://web.whatsapp.com/send?phone={tel}&text={quote(msg)}"
-            driver.get(url)
-
-            wait = WebDriverWait(driver, 20)
-
-            # Aguarda campo de texto aparecer
-            campo = wait.until(EC.presence_of_element_located(
-                (By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]')
-            ))
-
-            time.sleep(random.uniform(3, 5))
-
-            # Verifica se o número é válido (botão de envio aparece)
+        tentativas = 0
+        while tentativas < 2:
             try:
-                botao_envio = driver.find_element(By.XPATH, '//button[@aria-label="Enviar"]')
-            except:
-                print(f"  ⚠️  Número inválido ou sem conta WhatsApp: {tel}")
-                registrar_log('INVALIDO', tel, nome, 'Número sem WhatsApp')
-                erros += 1
-                time.sleep(3)
-                continue
+                url = f"https://web.whatsapp.com/send?phone={tel}&text={quote(msg)}"
+                driver.get(url)
 
-            # Envia a mensagem
-            botao_envio.click()
-            time.sleep(random.uniform(2, 3))
+                wait = WebDriverWait(driver, 25)
 
-            print(f"  ✅ Enviado com sucesso")
-            registrar_log('OK', tel, nome)
+                # Tenta múltiplos seletores para o campo de texto
+                campo = None
+                for sel in [
+                    '//div[@contenteditable="true"][@data-tab="10"]',
+                    '//div[@contenteditable="true"][@title="Digite uma mensagem"]',
+                    '//footer//div[@contenteditable="true"]',
+                ]:
+                    try:
+                        campo = wait.until(EC.presence_of_element_located((By.XPATH, sel)))
+                        break
+                    except:
+                        continue
 
-        except Exception as e:
-            print(f"  ❌ Erro: {e}")
-            registrar_log('ERRO', tel, nome, str(e)[:80])
-            erros += 1
+                if not campo:
+                    raise Exception("Campo de texto não encontrado")
 
-        # Intervalo aleatório entre mensagens
+                time.sleep(random.uniform(3, 5))
+
+                # Tenta múltiplos seletores para o botão de envio
+                botao_envio = None
+                for sel in [
+                    '//button[@data-testid="compose-btn-send"]',
+                    '//button[@aria-label="Enviar"]',
+                    '//span[@data-icon="send"]',
+                ]:
+                    try:
+                        botao_envio = driver.find_element(By.XPATH, sel)
+                        break
+                    except:
+                        continue
+
+                if not botao_envio:
+                    print(f"  ⚠️  Número inválido ou sem WhatsApp: {tel}")
+                    registrar_log('INVALIDO', tel, nome, 'Número sem WhatsApp')
+                    erros += 1
+                    break
+
+                botao_envio.click()
+                time.sleep(random.uniform(2, 3))
+                print(f"  ✅ Enviado com sucesso")
+                registrar_log('OK', tel, nome)
+                break
+
+            except Exception as e:
+                tentativas += 1
+                msg_erro = str(e)[:120]
+                print(f"  ⚠️  Tentativa {tentativas} falhou: {msg_erro[:60]}")
+
+                # Chrome travou — reinicia
+                if any(x in msg_erro for x in ['no such window', 'disconnected', 'not reachable', 'chrome not']):
+                    print(f"  🔄 Chrome travou. Reiniciando navegador...")
+                    try:
+                        driver.quit()
+                    except:
+                        pass
+                    time.sleep(5)
+                    driver = iniciar_driver()
+                    print("  ↩️  Abra o WhatsApp Web e escaneie o QR Code novamente.")
+                    input("  Pressione ENTER após escanear...")
+                    time.sleep(5)
+                else:
+                    if tentativas >= 2:
+                        registrar_log('ERRO', tel, nome, msg_erro[:80])
+                        erros += 1
+                    time.sleep(3)
+
+        # Intervalo entre mensagens
         if i < len(pendentes):
             espera = random.uniform(INTERVALO_MIN, INTERVALO_MAX)
             print(f"  ⏳ Aguardando {espera:.0f}s antes do próximo...")
