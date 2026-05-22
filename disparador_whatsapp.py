@@ -26,7 +26,7 @@ INTERVALO_MAX = 45   # segundos máximos entre mensagens
 CAMINHO_PLANILHA = "PLANILHA ULTIMOS 6 MESES.xlsx"
 LOG_ARQUIVO = "log_disparos.txt"
 LIMITE_HOJE = 100    # máximo de mensagens por sessão
-COMECAR_DE = "5516996265649"  # começar a partir deste número (SEMEAR)
+COMECAR_DE = "5511940068925"  # começar a partir deste número (Ana Marcato)
 
 # ─────────────────────────────────────────
 # EXTRAÇÃO E GERAÇÃO DAS MENSAGENS
