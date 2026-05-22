@@ -1,0 +1,20 @@
+{
+  "name": "correios-wake-sync",
+  "version": "1.0.0",
+  "description": "Sincroniza status de entrega dos Correios com pedidos Wake Commerce",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "simular": "node index.js --dry-run",
+    "producao": "node index.js --producao",
+    "help": "node index.js --help"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "winston": "^3.13.0"
+  }
+}
