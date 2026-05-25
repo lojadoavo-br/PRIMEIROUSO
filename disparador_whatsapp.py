@@ -26,7 +26,7 @@ INTERVALO_MAX = 45   # segundos máximos entre mensagens
 CAMINHO_PLANILHA = "PLANILHA ULTIMOS 6 MESES.xlsx"
 LOG_ARQUIVO = "log_disparos.txt"
 LIMITE_HOJE = 100    # máximo de mensagens por sessão
-COMECAR_DE = ""  # vazio = continua automaticamente de onde parou pelo log
+COMECAR_DE = "5521990587536"  # começar a partir deste número (sergio luis ramos — após Cristiana Monteiro)
 
 # ─────────────────────────────────────────
 # EXTRAÇÃO E GERAÇÃO DAS MENSAGENS
